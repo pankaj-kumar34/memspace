@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Name=My Product
+Comment=A redisian application
+# The Exec line includes %u to pass the URL to the application
+Exec=/usr/local/bin/redisian %u
+Terminal=false
+Type=Application
+Icon=redisian
+Categories=Utility;
+StartupWMClass=redisian
+
+ 
