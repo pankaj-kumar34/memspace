@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"redisian/backend/connection"
-	"redisian/backend/models"
+	"memspace/backend/connection"
+	"memspace/backend/models"
 )
 
 // ConnectionService exposes connection lifecycle methods to the frontend.

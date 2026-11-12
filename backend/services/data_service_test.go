@@ -7,7 +7,7 @@ import (
 	"github.com/alicebob/miniredis/v2/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"redisian/backend/connection"
+	"memspace/backend/connection"
 )
 
 func TestDataService_Strings(t *testing.T) {
@@ -287,7 +287,7 @@ func TestDataService_RedisJSON(t *testing.T) {
 	})
 
 	// JSONSet
-	doc := `{"name":"Redisian","features":["fast","secure","modern"]}`
+	doc := `{"name":"Memspace","features":["fast","secure","modern"]}`
 	err := svc.JSONSet(connId, 0, "app:meta", "$", doc)
 	require.NoError(t, err)
 

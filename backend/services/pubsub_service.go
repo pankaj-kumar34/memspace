@@ -8,7 +8,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"github.com/wailsapp/wails/v3/pkg/application"
-	"redisian/backend/connection"
+	"memspace/backend/connection"
 )
 
 // PubSubMessage is emitted when a message is received on a subscribed channel.

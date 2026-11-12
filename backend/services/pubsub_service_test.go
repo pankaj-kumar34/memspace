@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"redisian/backend/connection"
+	"memspace/backend/connection"
 )
 
 func TestPubSubService(t *testing.T) {

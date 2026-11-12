@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"redisian/backend/connection"
-	"redisian/backend/models"
+	"memspace/backend/connection"
+	"memspace/backend/models"
 )
 
 // KeyService provides Redis key browsing, scanning, TTL management, and mutations.
@@ -193,36 +193,84 @@ func (s *KeyService) GetKeyDetails(connId string, db int, key string) (*models.K
 
 // DeleteKey removes a key using hard DEL.
 func (s *KeyService) DeleteKey(connId string, db int, key string) error {
-	mc, err := s.mgr.GetClient(connId)
-	if err != nil {
-		return err
-	}
-	if mc.Config.ReadOnly {
-		return fmt.Errorf("connection is in read-only mode")
-	}
+	_, err := s.removeKeys(connId, db, []string{key}, false)
+	return err
+}
 
-	client := mc.GetClientForDB(db)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	return client.Del(ctx, key).Err()
+// DeleteKeys removes multiple keys using hard DEL and returns the number of keys deleted.
+func (s *KeyService) DeleteKeys(connId string, db int, keys []string) (int64, error) {
+	return s.removeKeys(connId, db, keys, false)
 }
 
 // UnlinkKey non-blockingly reclaims memory for a key using UNLINK.
 func (s *KeyService) UnlinkKey(connId string, db int, key string) error {
+	_, err := s.removeKeys(connId, db, []string{key}, true)
+	return err
+}
+
+// UnlinkKeys non-blockingly reclaims memory for multiple keys using UNLINK and returns the number of keys unlinked.
+func (s *KeyService) UnlinkKeys(connId string, db int, keys []string) (int64, error) {
+	return s.removeKeys(connId, db, keys, true)
+}
+
+func (s *KeyService) removeKeys(connId string, db int, keys []string, unlink bool) (int64, error) {
 	mc, err := s.mgr.GetClient(connId)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if mc.Config.ReadOnly {
-		return fmt.Errorf("connection is in read-only mode")
+		return 0, fmt.Errorf("connection is in read-only mode")
+	}
+	if len(keys) == 0 {
+		return 0, nil
 	}
 
 	client := mc.GetClientForDB(db)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	return client.Unlink(ctx, key).Err()
+	// In cluster mode, multi-key DEL/UNLINK fails with CROSSSLOT if keys span slots,
+	// so pipeline individual commands which go-redis routes per slot.
+	if _, isCluster := client.(*redis.ClusterClient); isCluster || mc.Config.Type == "cluster" {
+		pipe := client.Pipeline()
+		cmds := make([]*redis.IntCmd, 0, len(keys))
+		for _, k := range keys {
+			if unlink {
+				cmds = append(cmds, pipe.Unlink(ctx, k))
+			} else {
+				cmds = append(cmds, pipe.Del(ctx, k))
+			}
+		}
+		if _, err := pipe.Exec(ctx); err != nil {
+			return 0, err
+		}
+		var total int64
+		for _, cmd := range cmds {
+			total += cmd.Val()
+		}
+		return total, nil
+	}
+
+	const batchSize = 1000
+	var total int64
+	for i := 0; i < len(keys); i += batchSize {
+		end := i + batchSize
+		if end > len(keys) {
+			end = len(keys)
+		}
+		batch := keys[i:end]
+		var n int64
+		if unlink {
+			n, err = client.Unlink(ctx, batch...).Result()
+		} else {
+			n, err = client.Del(ctx, batch...).Result()
+		}
+		if err != nil {
+			return total, err
+		}
+		total += n
+	}
+	return total, nil
 }
 
 // SetTTL sets or removes the key's expiration. If ttlSeconds <= 0, the key is made persistent.

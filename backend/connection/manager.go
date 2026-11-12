@@ -14,11 +14,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/zalando/go-keyring"
-	"redisian/backend/models"
+	"memspace/backend/models"
 )
 
 const (
-	keyringService = "redisian"
+	keyringService = "memspace"
 )
 
 // ConnectionManager manages saved connection definitions and active Redis client sessions.
@@ -32,9 +32,17 @@ type ConnectionManager struct {
 
 // NewConnectionManager initializes the manager and loads existing connection configurations.
 func NewConnectionManager() *ConnectionManager {
-	storageDir := filepath.Join(os.Getenv("HOME"), ".redisian")
+	storageDir := filepath.Join(os.Getenv("HOME"), ".memspace")
 	_ = os.MkdirAll(storageDir, 0755)
 	storagePath := filepath.Join(storageDir, "connections.json")
+
+	// Backwards-compatible migration from legacy .redisian directory if present
+	if _, err := os.Stat(storagePath); os.IsNotExist(err) {
+		oldPath := filepath.Join(os.Getenv("HOME"), ".redisian", "connections.json")
+		if oldData, err := os.ReadFile(oldPath); err == nil {
+			_ = os.WriteFile(storagePath, oldData, 0600)
+		}
+	}
 
 	cm := &ConnectionManager{
 		connections: make(map[string]models.ConnectionConfig),
@@ -75,6 +83,9 @@ func (cm *ConnectionManager) loadFromFile() {
 func (cm *ConnectionManager) saveToFile() error {
 	list := make([]models.ConnectionConfig, 0, len(cm.connections))
 	for _, cfg := range cm.connections {
+		if cfg.Ephemeral {
+			continue
+		}
 		// Securely store credentials in OS keyring
 		if cfg.Password != "" {
 			_ = keyring.Set(keyringService, cfg.Id, cfg.Password)
@@ -126,6 +137,9 @@ func (cm *ConnectionManager) SaveConnection(cfg models.ConnectionConfig) error {
 	}
 
 	cm.connections[cfg.Id] = cfg
+	if cfg.Ephemeral {
+		return nil
+	}
 	return cm.saveToFile()
 }
 
@@ -152,8 +166,16 @@ func (cm *ConnectionManager) Connect(ctx context.Context, id string) (*models.Co
 		return nil, fmt.Errorf("connection config with id %s not found", id)
 	}
 
-	// Disconnect existing if already connected
-	_ = cm.Disconnect(id)
+	// Close existing active client if already connected
+	cm.mu.Lock()
+	oldClient, clientExists := cm.activePool[id]
+	if clientExists {
+		delete(cm.activePool, id)
+	}
+	cm.mu.Unlock()
+	if clientExists && oldClient != nil {
+		_ = oldClient.Close()
+	}
 
 	start := time.Now()
 	managed, err := NewManagedClientWithDialer(ctx, cfg, cm.Dialer)
@@ -210,6 +232,10 @@ func (cm *ConnectionManager) Disconnect(id string) error {
 	client, exists := cm.activePool[id]
 	if exists {
 		delete(cm.activePool, id)
+	}
+	cfg, cfgExists := cm.connections[id]
+	if cfgExists && cfg.Ephemeral {
+		delete(cm.connections, id)
 	}
 	cm.mu.Unlock()
 

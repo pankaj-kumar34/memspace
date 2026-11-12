@@ -9,7 +9,7 @@ import (
 	"github.com/alicebob/miniredis/v2/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"redisian/backend/connection"
+	"memspace/backend/connection"
 )
 
 func TestDiagnosticsService_ParseInfoOutput(t *testing.T) {
@@ -125,7 +125,7 @@ func TestDiagnosticsService_GetClientList_Integration(t *testing.T) {
 	cm, mr, connId := setupTestEnv(t, false)
 	svc := NewDiagnosticsService(cm)
 
-	mockOutput := "id=12 addr=127.0.0.1:4000 fd=5 name=redisian-app age=20 idle=1 flags=N db=0 sub=0 psub=0 multi=-1 qbl=0 obl=0 cmd=client user=default\n"
+	mockOutput := "id=12 addr=127.0.0.1:4000 fd=5 name=memspace-app age=20 idle=1 flags=N db=0 sub=0 psub=0 multi=-1 qbl=0 obl=0 cmd=client user=default\n"
 
 	mr.Server().SetPreHook(func(c *server.Peer, cmd string, args ...string) bool {
 		if cmd == "CLIENT" && len(args) > 0 && strings.ToUpper(args[0]) == "LIST" {
@@ -139,7 +139,7 @@ func TestDiagnosticsService_GetClientList_Integration(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, clients, 1)
 	assert.Equal(t, "12", clients[0].Id)
-	assert.Equal(t, "redisian-app", clients[0].Name)
+	assert.Equal(t, "memspace-app", clients[0].Name)
 }
 
 func TestDiagnosticsService_SlowLog_And_MemoryUsage(t *testing.T) {

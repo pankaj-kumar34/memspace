@@ -1,13 +1,36 @@
 import React, { useState } from "react";
-import { Plus, Trash2, Search } from "lucide-react";
-import type { ZMember } from "../../../bindings/redisian/backend/services/index.js";
-import { DataService } from "../../../bindings/redisian/backend/services/index.js";
+import { Plus, Trash2, Check, X, Search, Copy, Maximize2 } from "lucide-react";
+import { DataService } from "../../../bindings/memspace/backend/services/index.js";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import { ValueDetailModal } from "./ValueDetailModal";
+import { JsonSyntaxHighlighter } from "./JsonSyntaxHighlighter";
+import { ConfirmModal } from "../../components/ui/ConfirmModal";
+import { useToast } from "../../components/ui/Toast";
+import { getErrorMessage } from "../../lib/utils";
+
+const formatIfJson = (str: string): string => {
+  try {
+    const parsed = JSON.parse(str);
+    if (parsed !== null && typeof parsed === "object") {
+      return JSON.stringify(parsed, null, 2);
+    }
+    return str;
+  } catch {
+    return str;
+  }
+};
+
+interface ZSetMember {
+  member: string;
+  score: number;
+}
 
 interface ZSetEditorProps {
   connId: string;
   db: number;
   keyName: string;
-  initialMembers: ZMember[];
+  initialMembers: ZSetMember[];
   readOnly?: boolean;
   onRefresh: () => void;
 }
@@ -19,130 +42,285 @@ export const ZSetEditor: React.FC<ZSetEditorProps> = ({
   initialMembers,
   readOnly = false,
 }) => {
-  const [members, setMembers] = useState<ZMember[]>(initialMembers);
+  const { success: toastSuccess, error: toastError } = useToast();
+  const [members, setMembers] = useState<ZSetMember[]>(initialMembers);
   const [filter, setFilter] = useState("");
   const [newMember, setNewMember] = useState("");
-  const [newScore, setNewScore] = useState(0);
+  const [newScore, setNewScore] = useState<number>(0);
+  const [showAdd, setShowAdd] = useState(false);
+  const [copiedMember, setCopiedMember] = useState<string | null>(null);
+  const [inspectingMember, setInspectingMember] = useState<ZSetMember | null>(null);
+  const [deleteMemberTarget, setDeleteMemberTarget] = useState<string | null>(null);
 
   const filtered = members.filter((m) =>
-    m.member.toLowerCase().includes(filter.toLowerCase()) || String(m.score).includes(filter)
+    m.member.toLowerCase().includes(filter.toLowerCase())
   );
+
+  const handleCopy = (m: string) => {
+    navigator.clipboard.writeText(m);
+    setCopiedMember(m);
+    setTimeout(() => setCopiedMember(null), 1500);
+  };
 
   const handleAdd = async () => {
     if (!newMember.trim() || readOnly) return;
     try {
       await DataService.ZAdd(connId, db, keyName, newScore, newMember.trim());
-      setMembers((prev) => [...prev, { member: newMember.trim(), score: newScore }].sort((a, b) => a.score - b.score));
+      setMembers((prev) => {
+        const without = prev.filter((m) => m.member !== newMember.trim());
+        const updated = [...without, { score: newScore, member: newMember.trim() }];
+        return updated.sort((a, b) => a.score - b.score);
+      });
       setNewMember("");
       setNewScore(0);
-    } catch (err: any) {
-      alert("Failed to add member to ZSet: " + (err?.message || err));
+      setShowAdd(false);
+      toastSuccess("Member Added", `Added sorted set member.`);
+    } catch (err: unknown) {
+      toastError("Failed to add member", getErrorMessage(err));
     }
   };
 
-  const handleRemove = async (val: string) => {
-    if (readOnly) return;
+  const handleConfirmRemove = async () => {
+    if (!deleteMemberTarget || readOnly) return;
+    const member = deleteMemberTarget;
+    setDeleteMemberTarget(null);
     try {
-      await DataService.ZRem(connId, db, keyName, [val]);
-      setMembers((prev) => prev.filter((m) => m.member !== val));
-    } catch (err: any) {
-      alert("Failed to remove member: " + (err?.message || err));
+      await DataService.ZRem(connId, db, keyName, [member]);
+      setMembers((prev) => prev.filter((m) => m.member !== member));
+      toastSuccess("Member Removed", `Removed member from sorted set.`);
+    } catch (err: unknown) {
+      toastError("Failed to remove member", getErrorMessage(err));
+    }
+  };
+
+  const isMemberJson = (val: string) => {
+    const trimmed = val.trim();
+    if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return false;
+    try {
+      const parsed = JSON.parse(trimmed);
+      return parsed !== null && typeof parsed === "object";
+    } catch {
+      return false;
     }
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", gap: "0.5rem" }}>
+    <div className="flex h-full flex-col overflow-hidden bg-white">
       {/* Search and Add Bar */}
-      <div style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "0.5rem 0",
-        borderBottom: "1px solid #1f2937",
-        gap: "0.5rem",
-      }}>
-        <div style={{ position: "relative", width: "220px" }}>
-          <Search size={14} style={{ position: "absolute", left: "8px", top: "8px", color: "#6b7280" }} />
-          <input
+      <div className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-zinc-200/80 bg-zinc-50/70 px-3.5">
+        <div className="relative w-64">
+          <Search size={13} className="absolute top-2.5 left-2.5 text-zinc-400" />
+          <Input
             type="text"
-            placeholder="Search member or score..."
+            placeholder="Search members..."
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            className="input-dark font-mono"
-            style={{ width: "100%", paddingLeft: "1.75rem", fontSize: "0.8125rem", padding: "0.3rem 0.5rem 0.3rem 1.75rem" }}
+            className="h-8 border-zinc-200 bg-white pl-8 text-xs text-zinc-800 placeholder:text-zinc-400"
           />
+          {filter && (
+            <button
+              onClick={() => setFilter("")}
+              className="absolute top-2 right-2 cursor-pointer text-zinc-400 hover:text-zinc-600"
+            >
+              <X size={12} />
+            </button>
+          )}
         </div>
 
-        {!readOnly && (
-          <div style={{ display: "flex", gap: "0.5rem", flex: 1, maxWidth: "400px" }}>
-            <input
-              type="number"
-              placeholder="Score"
-              value={newScore}
-              onChange={(e) => setNewScore(parseFloat(e.target.value) || 0)}
-              className="input-dark font-mono"
-              style={{ width: "90px", fontSize: "0.8125rem", padding: "0.25rem 0.5rem" }}
-            />
-            <input
-              type="text"
-              placeholder="Member value..."
-              value={newMember}
-              onChange={(e) => setNewMember(e.target.value)}
-              className="input-dark font-mono"
-              style={{ flex: 1, fontSize: "0.8125rem", padding: "0.25rem 0.5rem" }}
-            />
-            <button onClick={handleAdd} className="btn-primary" style={{ fontSize: "0.75rem", padding: "0.25rem 0.6rem" }}>
-              <Plus size={14} />
-              <span>Add</span>
-            </button>
-          </div>
-        )}
-
-        <span style={{ fontSize: "0.75rem", color: "#6b7280" }}>
-          {members.length} members
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-[11px] text-zinc-400">
+            {members.length} {members.length === 1 ? "member" : "members"}
+          </span>
+          {!readOnly && (
+            <Button
+              onClick={() => setShowAdd(!showAdd)}
+              size="sm"
+              variant={showAdd ? "secondary" : "default"}
+              className="h-8 cursor-pointer gap-1 text-xs font-semibold"
+            >
+              <Plus size={13} />
+              <span>Add Member</span>
+            </Button>
+          )}
+        </div>
       </div>
 
+      {/* Add Member Inline */}
+      {showAdd && (
+        <div className="flex items-center gap-2 border-b border-zinc-200 bg-zinc-50 p-3">
+          <Input
+            type="number"
+            placeholder="Score"
+            value={newScore}
+            onChange={(e) => setNewScore(parseFloat(e.target.value) || 0)}
+            className="h-8 w-24 border-zinc-200 bg-white font-mono text-xs text-zinc-800"
+          />
+          <Input
+            type="text"
+            placeholder="Member value"
+            value={newMember}
+            onChange={(e) => setNewMember(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+            className="h-8 flex-1 border-zinc-200 bg-white font-mono text-xs text-zinc-800"
+            autoFocus
+          />
+          <Button
+            onClick={handleAdd}
+            size="sm"
+            variant="default"
+            className="h-8 cursor-pointer text-xs font-semibold"
+          >
+            Save
+          </Button>
+          <Button
+            onClick={() => setShowAdd(false)}
+            size="sm"
+            variant="outline"
+            className="h-8 cursor-pointer text-xs"
+          >
+            Cancel
+          </Button>
+        </div>
+      )}
+
       {/* Sorted Set Table */}
-      <div style={{ flex: 1, overflowY: "auto", border: "1px solid #1f2937", borderRadius: "0.375rem" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8125rem" }}>
-          <thead>
-            <tr style={{ backgroundColor: "#111827", borderBottom: "1px solid #1f2937", textAlign: "left", color: "#9ca3af" }}>
-              <th style={{ padding: "0.5rem 0.75rem", width: "110px" }}>Score</th>
-              <th style={{ padding: "0.5rem 0.75rem" }}>Member</th>
-              <th style={{ padding: "0.5rem 0.75rem", width: "70px", textAlign: "right" }}>Actions</th>
+      <div className="flex-1 overflow-y-auto">
+        <table className="w-full border-collapse text-xs">
+          <thead className="sticky top-0 border-b border-zinc-200 bg-zinc-50 text-left text-zinc-600 select-none">
+            <tr>
+              <th className="w-28 px-3.5 py-2 font-semibold">Score</th>
+              <th className="px-3.5 py-2 font-semibold">Member</th>
+              <th className="w-28 px-3.5 py-2 text-right font-semibold">Actions</th>
             </tr>
           </thead>
-          <tbody>
-            {filtered.map((item, i) => (
-              <tr
-                key={i}
-                style={{
-                  borderBottom: "1px solid rgba(255, 255, 255, 0.04)",
-                }}
-              >
-                <td style={{ padding: "0.5rem 0.75rem", color: "#fb7185", fontWeight: 600 }} className="font-mono">
-                  {item.score}
-                </td>
-                <td style={{ padding: "0.5rem 0.75rem", color: "#e2e8f0" }} className="font-mono">
-                  {item.member}
-                </td>
-                <td style={{ padding: "0.5rem 0.75rem", textAlign: "right" }}>
-                  {!readOnly && (
-                    <button
-                      onClick={() => handleRemove(item.member)}
-                      style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer" }}
-                      title="Remove Member"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  )}
+          <tbody className="divide-y divide-zinc-100 select-text">
+            {filtered.length === 0 ? (
+              <tr>
+                <td colSpan={3} className="py-8 text-center text-xs text-zinc-500">
+                  {members.length === 0
+                    ? "Empty sorted set (no members)."
+                    : "No members matching filter."}
                 </td>
               </tr>
-            ))}
+            ) : (
+              filtered.map(({ member, score }) => {
+                const isCopied = copiedMember === member;
+                const hasJson = isMemberJson(member);
+
+                return (
+                  <tr key={member} className="transition-colors hover:bg-zinc-50/80">
+                    <td className="px-3.5 py-2.5 align-top font-mono font-bold text-rose-600 select-none">
+                      {score}
+                    </td>
+                    <td className="px-3.5 py-2.5 align-top font-mono break-all text-zinc-800">
+                      {hasJson ? (
+                        <div className="group relative w-full max-w-2xl overflow-x-auto py-0.5 font-mono">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setInspectingMember({ member, score });
+                            }}
+                            className="absolute top-0 right-0 z-10 flex cursor-pointer items-center gap-1 rounded-md border border-zinc-200 bg-white/95 px-1.5 py-0.5 text-[10px] font-medium text-zinc-500 opacity-0 shadow-2xs backdrop-blur-xs transition-opacity select-none group-hover:opacity-100 hover:bg-white hover:text-indigo-600"
+                            title="Expand & Edit JSON"
+                          >
+                            <span className="text-[9px] font-bold text-indigo-600">JSON</span>
+                            <Maximize2 size={10} />
+                          </button>
+
+                          <div
+                            onClick={() => setInspectingMember({ member, score })}
+                            className="cursor-pointer"
+                          >
+                            <JsonSyntaxHighlighter
+                              value={formatIfJson(member)}
+                              isJson={true}
+                              showLineNumbers={false}
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="py-0.5 leading-relaxed whitespace-pre-wrap">{member}</div>
+                      )}
+                    </td>
+                    <td className="px-3.5 py-2 text-right select-none">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => setInspectingMember({ member, score })}
+                          className="cursor-pointer rounded p-1 text-zinc-400 transition-colors hover:bg-indigo-50 hover:text-indigo-600"
+                          title="Inspect & Format Member"
+                        >
+                          <Maximize2 size={12} />
+                        </button>
+
+                        <button
+                          onClick={() => handleCopy(member)}
+                          className="cursor-pointer rounded p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+                          title="Copy Member"
+                        >
+                          {isCopied ? (
+                            <Check size={12} className="text-emerald-600" />
+                          ) : (
+                            <Copy size={12} />
+                          )}
+                        </button>
+
+                        {!readOnly && (
+                          <button
+                            onClick={() => setDeleteMemberTarget(member)}
+                            className="cursor-pointer rounded p-1 text-zinc-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
+                            title="Remove Member"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>
+
+      {/* Value Inspector Modal */}
+      {inspectingMember && (
+        <ValueDetailModal
+          isOpen={true}
+          onClose={() => setInspectingMember(null)}
+          title={`ZSet Member (Score: ${inspectingMember.score})`}
+          subtitle={`Key: ${keyName}`}
+          value={inspectingMember.member}
+          readOnly={readOnly}
+          onSave={async (newVal) => {
+            if (newVal !== inspectingMember.member) {
+              await DataService.ZRem(connId, db, keyName, [inspectingMember.member]);
+              await DataService.ZAdd(connId, db, keyName, inspectingMember.score, newVal);
+              setMembers((prev) =>
+                prev.map((m) =>
+                  m.member === inspectingMember.member
+                    ? { ...m, member: newVal }
+                    : m
+                )
+              );
+            }
+            setInspectingMember(null);
+          }}
+        />
+      )}
+
+      {/* Delete Member Confirmation Modal */}
+      <ConfirmModal
+        isOpen={!!deleteMemberTarget}
+        title="Remove Sorted Set Member"
+        description={`Are you sure you want to remove member "${deleteMemberTarget}"?`}
+        confirmText="Remove Member"
+        cancelText="Cancel"
+        variant="danger"
+        onConfirm={handleConfirmRemove}
+        onCancel={() => setDeleteMemberTarget(null)}
+      />
     </div>
   );
 };

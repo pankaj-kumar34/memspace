@@ -38,6 +38,7 @@ type ConnectionConfig struct {
 	ReadOnly       bool      `json:"readOnly"`
 	Color          string    `json:"color"`
 	Group          string    `json:"group"`
+	Ephemeral      bool      `json:"ephemeral,omitempty"`
 }
 
 // ConnectionStatus provides operational metadata after connecting.

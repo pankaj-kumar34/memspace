@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key>
-    <string>redisian</string>
+    <string>memspace</string>
     <key>CFBundleIdentifier</key>
-    <string>com.example.redisian.dev</string>
+    <string>com.example.memspace.dev</string>
     <key>CFBundleName</key>
     <string>My Product (Dev)</string>
     <key>CFBundleDisplayName</key>

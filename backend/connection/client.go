@@ -12,8 +12,16 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"redisian/backend/models"
+	"memspace/backend/models"
 )
+
+type redisVoidLogger struct{}
+
+func (redisVoidLogger) Printf(ctx context.Context, format string, v ...interface{}) {}
+
+func init() {
+	redis.SetLogger(redisVoidLogger{})
+}
 
 // ManagedClient wraps a Redis UniversalClient along with its configuration and optional SSH tunnel.
 type ManagedClient struct {
@@ -25,13 +33,20 @@ type ManagedClient struct {
 }
 
 // BuildTLSConfig generates a *tls.Config based on user preferences.
-func BuildTLSConfig(tlsCfg models.TlsConfig) (*tls.Config, error) {
+func BuildTLSConfig(host string, tlsCfg models.TlsConfig) (*tls.Config, error) {
 	if !tlsCfg.Enabled {
 		return nil, nil
 	}
 
+	// Extract hostname without port if present
+	sniHost := host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		sniHost = h
+	}
+
 	tc := &tls.Config{
 		InsecureSkipVerify: tlsCfg.InsecureSkipVerify,
+		ServerName:         sniHost,
 	}
 
 	if tlsCfg.CaCert != "" {
@@ -82,7 +97,7 @@ func NewManagedClientWithDialer(ctx context.Context, cfg models.ConnectionConfig
 		}
 	}
 
-	tlsConfig, err := BuildTLSConfig(cfg.Tls)
+	tlsConfig, err := BuildTLSConfig(cfg.Host, cfg.Tls)
 	if err != nil {
 		if tunnel != nil {
 			_ = tunnel.Close()
@@ -112,10 +127,11 @@ func NewManagedClientWithDialer(ctx context.Context, cfg models.ConnectionConfig
 			Password:     cfg.Password,
 			TLSConfig:    tlsConfig,
 			Dialer:       dialer,
-			DialTimeout:  5 * time.Second,
+			DialTimeout:  4 * time.Second,
 			ReadTimeout:  10 * time.Second,
 			WriteTimeout: 10 * time.Second,
 			ReadOnly:     cfg.ReadOnly,
+			MaxRetries:   2,
 		})
 
 	case "sentinel":
@@ -131,9 +147,10 @@ func NewManagedClientWithDialer(ctx context.Context, cfg models.ConnectionConfig
 			DB:            cfg.Database,
 			TLSConfig:     tlsConfig,
 			Dialer:        dialer,
-			DialTimeout:   5 * time.Second,
+			DialTimeout:   4 * time.Second,
 			ReadTimeout:   10 * time.Second,
 			WriteTimeout:  10 * time.Second,
+			MaxRetries:    2,
 		})
 
 	default: // "standalone" or empty
@@ -145,20 +162,31 @@ func NewManagedClientWithDialer(ctx context.Context, cfg models.ConnectionConfig
 			DB:           cfg.Database,
 			TLSConfig:    tlsConfig,
 			Dialer:       dialer,
-			DialTimeout:  5 * time.Second,
+			DialTimeout:  4 * time.Second,
 			ReadTimeout:  10 * time.Second,
 			WriteTimeout: 10 * time.Second,
+			MaxRetries:   2,
 		})
 	}
 
 	// Verify connection with Ping
-	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	pingCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
 
 	if err := client.Ping(pingCtx).Err(); err != nil {
 		_ = client.Close()
 		if tunnel != nil {
 			_ = tunnel.Close()
+		}
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "HTTP/1.1 400 Bad Request") || strings.Contains(errMsg, "HTTP/") {
+			return nil, fmt.Errorf("server responded with 'HTTP/1.1 400 Bad Request'. This server requires TLS/SSL encryption (e.g. AWS ElastiCache, Azure, Upstash, or cloud Redis). Please enable TLS under the 'TLS / SSL' tab (and check 'Skip TLS verification' if using a self-signed or private CA cert)")
+		}
+		if strings.Contains(errMsg, "deadline exceeded") || strings.Contains(errMsg, "i/o timeout") {
+			if strings.Contains(cfg.Host, ".private.") {
+				return nil, fmt.Errorf("connection timed out (context deadline exceeded): This is a private service endpoint and cannot be reached directly over the public internet. Connect to your corporate/cloud VPN (e.g. IBM Cloud VPN) or configure an SSH Tunnel under the 'SSH Tunnel' tab")
+			}
+			return nil, fmt.Errorf("connection timed out (context deadline exceeded): Host could not be reached. Please check your network, VPN, or firewall settings")
 		}
 		return nil, fmt.Errorf("ping failed: %w", err)
 	}

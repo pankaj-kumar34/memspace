@@ -2,13 +2,15 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 	"unicode"
 
-	"redisian/backend/connection"
-	"redisian/backend/models"
+	"github.com/redis/go-redis/v9"
+	"memspace/backend/connection"
+	"memspace/backend/models"
 )
 
 // CliService allows interactive command execution within the embedded terminal.
@@ -152,6 +154,14 @@ func (s *CliService) ExecuteCommand(connId string, db int, args []string) (*mode
 	durationMs := time.Since(start).Milliseconds()
 
 	if err != nil {
+		if errors.Is(err, redis.Nil) || err.Error() == "redis: nil" {
+			return &models.CliResponse{
+				Output:          nil,
+				RawOutput:       "(nil)",
+				ExecutionTimeMs: durationMs,
+			}, nil
+		}
+
 		return &models.CliResponse{
 			Error:           err.Error(),
 			RawOutput:       fmt.Sprintf("(error) %s", err.Error()),
@@ -159,9 +169,60 @@ func (s *CliService) ExecuteCommand(connId string, db int, args []string) (*mode
 		}, nil
 	}
 
+	if res == nil {
+		return &models.CliResponse{
+			Output:          nil,
+			RawOutput:       "(nil)",
+			ExecutionTimeMs: durationMs,
+		}, nil
+	}
+
 	return &models.CliResponse{
 		Output:          res,
-		RawOutput:       fmt.Sprintf("%v", res),
+		RawOutput:       formatCliOutput(res),
 		ExecutionTimeMs: durationMs,
 	}, nil
+}
+
+// formatCliOutput formats Go Redis return values into Redis CLI representation.
+func formatCliOutput(res any) string {
+	if res == nil {
+		return "(nil)"
+	}
+
+	switch v := res.(type) {
+	case string:
+		return v
+	case int, int8, int16, int32, int64:
+		return fmt.Sprintf("(integer) %d", v)
+	case uint, uint8, uint16, uint32, uint64:
+		return fmt.Sprintf("(integer) %d", v)
+	case float32, float64:
+		return fmt.Sprintf("%v", v)
+	case bool:
+		if v {
+			return "(integer) 1"
+		}
+		return "(integer) 0"
+	case []any:
+		if len(v) == 0 {
+			return "(empty list or set)"
+		}
+		var lines []string
+		for i, item := range v {
+			lines = append(lines, fmt.Sprintf("%d) %s", i+1, formatCliOutput(item)))
+		}
+		return strings.Join(lines, "\n")
+	case []string:
+		if len(v) == 0 {
+			return "(empty list or set)"
+		}
+		var lines []string
+		for i, item := range v {
+			lines = append(lines, fmt.Sprintf("%d) %q", i+1, item))
+		}
+		return strings.Join(lines, "\n")
+	default:
+		return fmt.Sprintf("%v", res)
+	}
 }

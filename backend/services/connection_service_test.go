@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
-	"redisian/backend/connection"
-	"redisian/backend/models"
+	"memspace/backend/connection"
+	"memspace/backend/models"
 )
 
 func TestConnectionService_Lifecycle(t *testing.T) {

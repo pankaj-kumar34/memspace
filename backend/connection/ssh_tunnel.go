@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ssh"
-	"redisian/backend/models"
+	"memspace/backend/models"
 )
 
 // SSHTunnel encapsulates an active SSH connection used to forward TCP traffic.

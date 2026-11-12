@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"redisian/backend/connection"
+	"memspace/backend/connection"
 )
 
 // ZMember represents a sorted set entry with a member value and numerical score.

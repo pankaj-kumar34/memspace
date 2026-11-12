@@ -162,6 +162,38 @@ func TestKeyService_DeleteAndUnlink(t *testing.T) {
 	assert.False(t, mr.Exists("unlink_target"))
 }
 
+func TestKeyService_DeleteKeysAndUnlinkKeys(t *testing.T) {
+	cm, mr, connId := setupTestEnv(t, false)
+	svc := NewKeyService(cm)
+
+	mr.Set("batch_del_1", "a")
+	mr.Set("batch_del_2", "b")
+	mr.Set("batch_keep", "c")
+	mr.Set("batch_unlink_1", "d")
+	mr.Set("batch_unlink_2", "e")
+
+	// Empty slice returns 0, nil
+	n, err := svc.DeleteKeys(connId, 0, []string{})
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), n)
+
+	// Batch delete (including a non-existent key)
+	n, err = svc.DeleteKeys(connId, 0, []string{"batch_del_1", "batch_del_2", "does_not_exist"})
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), n)
+	assert.False(t, mr.Exists("batch_del_1"))
+	assert.False(t, mr.Exists("batch_del_2"))
+	assert.True(t, mr.Exists("batch_keep"))
+
+	// Batch unlink
+	n, err = svc.UnlinkKeys(connId, 0, []string{"batch_unlink_1", "batch_unlink_2"})
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), n)
+	assert.False(t, mr.Exists("batch_unlink_1"))
+	assert.False(t, mr.Exists("batch_unlink_2"))
+	assert.True(t, mr.Exists("batch_keep"))
+}
+
 func TestKeyService_ReadOnlyProtection(t *testing.T) {
 	cm, mr, roConnId := setupTestEnv(t, true)
 	svc := NewKeyService(cm)
@@ -170,6 +202,15 @@ func TestKeyService_ReadOnlyProtection(t *testing.T) {
 
 	// Delete blocked
 	err := svc.DeleteKey(roConnId, 0, "ro_key")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "read-only")
+
+	// Batch Delete & Unlink blocked
+	_, err = svc.DeleteKeys(roConnId, 0, []string{"ro_key"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "read-only")
+
+	_, err = svc.UnlinkKeys(roConnId, 0, []string{"ro_key"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "read-only")
 

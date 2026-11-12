@@ -5,10 +5,10 @@
 	"info": {
 		"0409": {
 			"ProductVersion": "0.1.0",
-			"CompanyName": "My Company",
-			"FileDescription": "A redisian application",
-			"LegalCopyright": "© 2026, My Company",
-			"ProductName": "My Product",
+			"CompanyName": "Memspace",
+			"FileDescription": "Native Desktop Client for Redis, Valkey & In-Memory Databases",
+			"LegalCopyright": "© 2026, Memspace",
+			"ProductName": "Memspace",
 			"Comments": "This is a comment"
 		}
 	}

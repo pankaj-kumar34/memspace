@@ -9,8 +9,8 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
-	"redisian/backend/connection"
-	"redisian/backend/models"
+	"memspace/backend/connection"
+	"memspace/backend/models"
 )
 
 func setupTestEnv(t *testing.T, readOnly bool) (*connection.ConnectionManager, *miniredis.Miniredis, string) {

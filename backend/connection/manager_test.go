@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
-	"redisian/backend/models"
+	"memspace/backend/models"
 )
 
 func newTestPipeDialer(mr *miniredis.Miniredis) func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -202,6 +202,34 @@ func TestConnectionManager_Connect_FailedPing(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestConnectionManager_Connect_PrivateEndpointTimeout(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	keyring.MockInit()
+
+	cm := NewConnectionManager()
+	cm.Dialer = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		return nil, context.DeadlineExceeded
+	}
+
+	cfg := models.ConnectionConfig{
+		Id:       "private-cloud-endpoint",
+		Host:     "abc.private.uhp.valkey.eu-gb.dataservices.appdomain.cloud",
+		Port:     6379,
+		Database: 0,
+	}
+	require.NoError(t, cm.SaveConnection(cfg))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	status, err := cm.Connect(ctx, "private-cloud-endpoint")
+	assert.Error(t, err)
+	require.NotNil(t, status)
+	assert.False(t, status.Connected)
+	assert.Contains(t, err.Error(), "private service endpoint")
+	assert.Contains(t, err.Error(), "VPN")
+}
+
 func TestConnectionManager_TestConnection(t *testing.T) {
 	mr := miniredis.RunT(t)
 	defer mr.Close()
@@ -319,22 +347,61 @@ func TestConnectionManager_SetActiveClient(t *testing.T) {
 
 func TestBuildTLSConfig(t *testing.T) {
 	// Disabled
-	tc, err := BuildTLSConfig(models.TlsConfig{Enabled: false})
+	tc, err := BuildTLSConfig("example.com", models.TlsConfig{Enabled: false})
 	assert.NoError(t, err)
 	assert.Nil(t, tc)
 
 	// Enabled with InsecureSkipVerify
-	tc, err = BuildTLSConfig(models.TlsConfig{Enabled: true, InsecureSkipVerify: true})
+	tc, err = BuildTLSConfig("example.com", models.TlsConfig{Enabled: true, InsecureSkipVerify: true})
 	assert.NoError(t, err)
 	require.NotNil(t, tc)
 	assert.True(t, tc.InsecureSkipVerify)
+	assert.Equal(t, "example.com", tc.ServerName)
 
 	// Enabled with invalid CA PEM
-	_, err = BuildTLSConfig(models.TlsConfig{Enabled: true, CaCert: "invalid cert content"})
+	_, err = BuildTLSConfig("example.com", models.TlsConfig{Enabled: true, CaCert: "invalid cert content"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to parse CA certificate")
 
 	// Enabled with mismatched client key pair
-	_, err = BuildTLSConfig(models.TlsConfig{Enabled: true, ClientCert: "not-a-cert", ClientKey: "not-a-key"})
+	_, err = BuildTLSConfig("example.com", models.TlsConfig{Enabled: true, ClientCert: "not-a-cert", ClientKey: "not-a-key"})
 	assert.Error(t, err)
+}
+
+func TestConnectionManager_EphemeralConnection(t *testing.T) {
+	tempHome := t.TempDir()
+	t.Setenv("HOME", tempHome)
+	keyring.MockInit()
+
+	cm := NewConnectionManager()
+	require.NotNil(t, cm)
+
+	cfg := models.ConnectionConfig{
+		Name:      "Localhost (Temp)",
+		Host:      "127.0.0.1",
+		Port:      6379,
+		Type:      "standalone",
+		Ephemeral: true,
+	}
+
+	err := cm.SaveConnection(cfg)
+	require.NoError(t, err)
+
+	// In-memory it should be present
+	saved := cm.GetSavedConnections()
+	require.Len(t, saved, 1)
+	assert.True(t, saved[0].Ephemeral)
+	id := saved[0].Id
+
+	// Check file on disk: it should NOT contain the ephemeral connection
+	cm2 := NewConnectionManager()
+	diskSaved := cm2.GetSavedConnections()
+	assert.Len(t, diskSaved, 0)
+
+	// Disconnecting should remove the ephemeral connection from memory
+	err = cm.Disconnect(id)
+	require.NoError(t, err)
+
+	afterDisconnect := cm.GetSavedConnections()
+	assert.Len(t, afterDisconnect, 0)
 }

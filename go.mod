@@ -1,4 +1,4 @@
-module redisian
+module memspace
 
 go 1.26.0
 

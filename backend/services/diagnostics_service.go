@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"redisian/backend/connection"
-	"redisian/backend/models"
+	"memspace/backend/connection"
+	"memspace/backend/models"
 )
 
 // DiagnosticsService provides performance metrics, slowlog queries, and client list inspection.

@@ -8,27 +8,27 @@
         AllowPromptForPassword="false">
     </Settings>
     <Installer
-        Path="redisian"
+        Path="memspace"
         Arguments=""
-        InstallLocation="C:\Program Files\My Company\My Product">
+        InstallLocation="C:\Program Files\Memspace\Memspace">
     </Installer>
     <PackageInformation
-        PackageName="My Product"
-        PackageDisplayName="My Product"
+        PackageName="Memspace"
+        PackageDisplayName="Memspace"
         PublisherName="CN=My Company"
         PublisherDisplayName="My Company"
         Version="0.1.0.0"
-        PackageDescription="A redisian application">
+        PackageDescription="Native Desktop Client for Redis, Valkey &amp; In-Memory Databases">
         <Capabilities>
             <Capability Name="runFullTrust" />
             
         </Capabilities>
         <Applications>
             <Application
-                Id="com.example.redisian"
-                Description="A redisian application"
-                DisplayName="My Product"
-                ExecutableName="redisian"
+                Id="com.example.memspace"
+                Description="Native Desktop Client for Redis, Valkey &amp; In-Memory Databases"
+                DisplayName="Memspace"
+                ExecutableName="memspace"
                 EntryPoint="Windows.FullTrustApplication">
                 
             </Application>
@@ -41,13 +41,13 @@
         </Dependencies>
         <Properties>
             <Framework>false</Framework>
-            <DisplayName>My Product</DisplayName>
+            <DisplayName>Memspace</DisplayName>
             <PublisherDisplayName>My Company</PublisherDisplayName>
-            <Description>A redisian application</Description>
+            <Description>Native Desktop Client for Redis, Valkey &amp; In-Memory Databases</Description>
             <Logo>Assets\AppIcon.png</Logo>
         </Properties>
     </PackageInformation>
-    <SaveLocation PackagePath="redisian.msix" />
+    <SaveLocation PackagePath="memspace.msix" />
     <PackageIntegrity>
         <CertificatePath></CertificatePath>
     </PackageIntegrity>

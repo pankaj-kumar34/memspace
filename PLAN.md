@@ -1,6 +1,6 @@
-# Redisian: Full-Featured Multi-Server Redis Desktop Client (Wails v3)
+# Memspace: Full-Featured Multi-Server Redis & Valkey Desktop Client (Wails v3)
 
-A modern, high-performance, cross-platform Redis GUI desktop application built with **Wails v3**, **Go 1.22+**, and **React 19 + TypeScript + Tailwind CSS / Shadcn UI**.
+A modern, high-performance, cross-platform desktop application for Redis, Valkey, and in-memory databases built with **Wails v3**, **Go 1.22+**, and **React 19 + TypeScript + Tailwind CSS / Shadcn UI**.
 
 ---
 
@@ -53,7 +53,7 @@ A modern, high-performance, cross-platform Redis GUI desktop application built w
 
 ---
 
-### 3.2 Key Explorer & Navigation
+### 3.2 Explorer & Navigation
 - **Non-Blocking Scanning**: Strictly utilizes `SCAN` (and `SSCAN`, `HSCAN`, `ZSCAN`) with configurable cursor batches (e.g., 500–2000) to never freeze high-traffic servers.
 - **Dual View Modes**:
   - **Hierarchical Tree View**: Automatic namespace folding based on configurable delimiters (`:`, `/`, `-`, `_`).
@@ -124,7 +124,7 @@ A modern, high-performance, cross-platform Redis GUI desktop application built w
 ## 4. Directory & Module Structure
 
 ```
-redisian/
+memspace/
 ├── main.go                     # Wails v3 application entrypoint
 ├── wails.json                  # Wails v3 project configuration
 ├── build/                      # App icons, build assets, and packaging configs
@@ -163,7 +163,7 @@ redisian/
     │   │   ├── connections/    # Server modal, SSH/TLS settings, connection list
     │   │   ├── explorer/       # Tree view, Flat table, Key filter bar
     │   │   ├── editors/        # String, Hash, List, Set, ZSet, JSON, Stream, Geo
-    │   │   ├── terminal/       # Embedded Xterm.js CLI console
+    │   │   ├── terminal/       # Interactive Console
     │   │   ├── pubsub/         # Pub/Sub monitor & publisher dialog
     │   │   ├── monitor/        # Live MONITOR event viewer
     │   │   ├── diagnostics/    # Server INFO cards, Slowlog table, Client manager
@@ -178,7 +178,7 @@ redisian/
 
 - **Phase 1: Foundation & Scaffolding**: Setup Wails v3 + Vite + React 19 + Tailwind + Shadcn UI; establish Wails RPC binding architecture and event stream channels.
 - **Phase 2: Multi-Server Connection Manager**: Support Standalone, Cluster, and Sentinel; integrate SSH tunneling, TLS/mTLS, OS Keyring credentials, and connection grouping.
-- **Phase 3: Key Explorer & Core Data Types**: Non-blocking `SCAN` engine, virtualized tree/table views, and editors for Strings, Hashes, Lists, Sets, and Sorted Sets.
+- **Phase 3: Explorer & Core Data Types**: Non-blocking `SCAN` engine, virtualized tree/table views, and editors for Strings, Hashes, Lists, Sets, and Sorted Sets.
 - **Phase 4: Extended Types & Modules**: Redis Streams (PEL & Consumer Groups), RedisJSON, Geospatial maps, Bitmaps, and RedisBloom / TimeSeries.
 - **Phase 5: Developer Tools & Real-Time Streams**: Embedded Xterm.js Redis CLI with autocompletion, real-time Pub/Sub, live `MONITOR`, and Lua/Functions editor.
 - **Phase 6: Diagnostics, Metrics & Memory Profiler**: Real-time `INFO` dashboard, `SLOWLOG`, `CLIENT LIST` / `CLIENT KILL`, BigKey analyzer, and data import/export.

@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"redisian/backend/connection"
+	"memspace/backend/connection"
 )
 
 func TestCliService_TokenParsing(t *testing.T) {
@@ -111,7 +111,7 @@ func TestCliService_ExecuteRawCommand(t *testing.T) {
 	svc := NewCliService(cm)
 
 	// Raw command with quotes
-	res, err := svc.ExecuteRawCommand(connId, 0, `SET "greeting msg" "Welcome to Redisian"`)
+	res, err := svc.ExecuteRawCommand(connId, 0, `SET "greeting msg" "Welcome to Memspace"`)
 	require.NoError(t, err)
 	assert.Empty(t, res.Error)
 	assert.Equal(t, "OK", res.RawOutput)
@@ -120,12 +120,37 @@ func TestCliService_ExecuteRawCommand(t *testing.T) {
 	res, err = svc.ExecuteRawCommand(connId, 0, `GET "greeting msg"`)
 	require.NoError(t, err)
 	assert.Empty(t, res.Error)
-	assert.Equal(t, "Welcome to Redisian", res.RawOutput)
+	assert.Equal(t, "Welcome to Memspace", res.RawOutput)
 
 	// Malformed raw command (unclosed quote)
 	res, err = svc.ExecuteRawCommand(connId, 0, `SET "unclosed value`)
 	require.NoError(t, err)
 	assert.Contains(t, res.Error, "unclosed quote")
+}
+
+func TestCliService_NilHandling(t *testing.T) {
+	cm, _, connId := setupTestEnv(t, false)
+	svc := NewCliService(cm)
+
+	// GET non-existent key should return (nil) without error
+	res, err := svc.ExecuteCommand(connId, 0, []string{"GET", "nonexistent-key-12345"})
+	require.NoError(t, err)
+	assert.Empty(t, res.Error)
+	assert.Equal(t, "(nil)", res.RawOutput)
+	assert.Nil(t, res.Output)
+
+	// GETSET on new key should return (nil) without error
+	res, err = svc.ExecuteCommand(connId, 0, []string{"GETSET", "new-key-12345", "hello"})
+	require.NoError(t, err)
+	assert.Empty(t, res.Error)
+	assert.Equal(t, "(nil)", res.RawOutput)
+	assert.Nil(t, res.Output)
+
+	// Second GETSET should return previous value
+	res, err = svc.ExecuteCommand(connId, 0, []string{"GETSET", "new-key-12345", "world"})
+	require.NoError(t, err)
+	assert.Empty(t, res.Error)
+	assert.Equal(t, "hello", res.RawOutput)
 }
 
 func TestCliService_ReadOnlyProtection(t *testing.T) {
