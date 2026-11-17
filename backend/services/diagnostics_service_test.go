@@ -201,4 +201,27 @@ func TestDiagnosticsService_ConnectionNotFound(t *testing.T) {
 
 	err = svc.KillClient("nonexistent", "127.0.0.1:1234")
 	assert.Error(t, err)
+
+	_, err = svc.ScanBigKeys("nonexistent", 0, "*", 100, 10)
+	assert.Error(t, err)
+}
+
+func TestDiagnosticsService_ScanBigKeys(t *testing.T) {
+	cm, mr, connId := setupTestEnv(t, false)
+	svc := NewDiagnosticsService(cm)
+
+	_ = mr.Set("small:str", "hi")
+	_ = mr.Set("big:str", strings.Repeat("x", 500))
+	mr.HSet("user:hash", "f1", "v1", "f2", "v2", "f3", "v3")
+	_, _ = mr.Lpush("queue:list", "a")
+	_, _ = mr.Lpush("queue:list", "b")
+
+	res, err := svc.ScanBigKeys(connId, 0, "*", 100, 3)
+	require.NoError(t, err)
+	assert.Equal(t, int64(4), res.ScannedKeys)
+	assert.True(t, res.Completed)
+	require.Len(t, res.TopKeys, 3)
+	assert.Equal(t, "big:str", res.TopKeys[0].Key)
+	assert.Equal(t, "string", res.TopKeys[0].Type)
+	assert.Equal(t, int64(500), res.TopKeys[0].Length)
 }

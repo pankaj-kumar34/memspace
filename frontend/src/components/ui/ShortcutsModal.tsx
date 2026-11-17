@@ -64,6 +64,7 @@ const ShortcutsModalContent: React.FC<{
         { name: "Explorer", keys: [modSymbol, "2"] },
         { name: "Diagnostics Dashboard", keys: [modSymbol, "3"] },
         { name: "Pub / Sub Debugger", keys: [modSymbol, "4"] },
+        { name: "Command Monitor", keys: [modSymbol, "5"] },
       ],
     },
     {

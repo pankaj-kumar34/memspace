@@ -42,3 +42,20 @@ type ClientEntry struct {
 	OutputBuf  string `json:"outputBuf"`
 	QueryBuf   string `json:"queryBuf"`
 }
+
+// BigKeyEntry represents a sampled key and its memory footprint / element count.
+type BigKeyEntry struct {
+	Key         string `json:"key"`
+	Type        string `json:"type"`
+	MemoryBytes int64  `json:"memoryBytes"`
+	Length      int64  `json:"length"`
+}
+
+// BigKeyScanResult summarizes a non-blocking BigKey scan across a Redis keyspace.
+type BigKeyScanResult struct {
+	ScannedKeys int64         `json:"scannedKeys"`
+	TotalMemory int64         `json:"totalMemory"`
+	TopKeys     []BigKeyEntry `json:"topKeys"`
+	Completed   bool          `json:"completed"`
+	DurationMs  int64         `json:"durationMs"`
+}

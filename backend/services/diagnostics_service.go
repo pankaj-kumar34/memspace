@@ -3,9 +3,11 @@ package services
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"memspace/backend/connection"
 	"memspace/backend/models"
 )
@@ -198,4 +200,130 @@ func (s *DiagnosticsService) GetMemoryUsage(connId string, db int, key string) (
 	defer cancel()
 
 	return mc.GetClientForDB(db).MemoryUsage(ctx, key).Result()
+}
+
+// ScanBigKeys performs a non-blocking cursor SCAN to find the largest keys by memory usage and element count.
+func (s *DiagnosticsService) ScanBigKeys(connId string, db int, pattern string, maxKeys int64, topN int) (*models.BigKeyScanResult, error) {
+	mc, err := s.mgr.GetClient(connId)
+	if err != nil {
+		return nil, err
+	}
+
+	if strings.TrimSpace(pattern) == "" {
+		pattern = "*"
+	}
+	if maxKeys <= 0 {
+		maxKeys = 2000
+	}
+	if topN <= 0 {
+		topN = 25
+	}
+
+	start := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	client := mc.GetClientForDB(db)
+	var cursor uint64
+	var scanned int64
+	var totalMem int64
+	entries := make([]models.BigKeyEntry, 0, 128)
+	completed := false
+
+	for scanned < maxKeys {
+		keys, nextCursor, err := client.Scan(ctx, cursor, pattern, 200).Result()
+		if err != nil {
+			return nil, err
+		}
+
+		if len(keys) > 0 {
+			remaining := maxKeys - scanned
+			if int64(len(keys)) > remaining {
+				keys = keys[:remaining]
+			}
+			scanned += int64(len(keys))
+
+			pipe := client.Pipeline()
+			typeCmds := make([]*redis.StatusCmd, len(keys))
+			memCmds := make([]*redis.IntCmd, len(keys))
+			for i, k := range keys {
+				typeCmds[i] = pipe.Type(ctx, k)
+				memCmds[i] = pipe.MemoryUsage(ctx, k)
+			}
+			_, _ = pipe.Exec(ctx)
+
+			lenPipe := client.Pipeline()
+			lenCmds := make([]*redis.IntCmd, len(keys))
+			keyTypes := make([]string, len(keys))
+			for i, k := range keys {
+				kt, _ := typeCmds[i].Result()
+				keyTypes[i] = kt
+				switch kt {
+				case "string":
+					lenCmds[i] = lenPipe.StrLen(ctx, k)
+				case "hash":
+					lenCmds[i] = lenPipe.HLen(ctx, k)
+				case "list":
+					lenCmds[i] = lenPipe.LLen(ctx, k)
+				case "set":
+					lenCmds[i] = lenPipe.SCard(ctx, k)
+				case "zset":
+					lenCmds[i] = lenPipe.ZCard(ctx, k)
+				case "stream":
+					lenCmds[i] = lenPipe.XLen(ctx, k)
+				}
+			}
+			_, _ = lenPipe.Exec(ctx)
+
+			for i, k := range keys {
+				mem, memErr := memCmds[i].Result()
+				if memErr != nil || mem < 0 {
+					mem = 0
+				}
+				totalMem += mem
+
+				var length int64
+				if lenCmds[i] != nil {
+					if l, lErr := lenCmds[i].Result(); lErr == nil && l >= 0 {
+						length = l
+					}
+				}
+
+				entries = append(entries, models.BigKeyEntry{
+					Key:         k,
+					Type:        keyTypes[i],
+					MemoryBytes: mem,
+					Length:      length,
+				})
+			}
+		}
+
+		cursor = nextCursor
+		if cursor == 0 {
+			completed = true
+			break
+		}
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].MemoryBytes != entries[j].MemoryBytes {
+			return entries[i].MemoryBytes > entries[j].MemoryBytes
+		}
+		if entries[i].Length != entries[j].Length {
+			return entries[i].Length > entries[j].Length
+		}
+		return entries[i].Key < entries[j].Key
+	})
+
+	if len(entries) > topN {
+		entries = entries[:topN]
+	}
+
+	return &models.BigKeyScanResult{
+		ScannedKeys: scanned,
+		TotalMemory: totalMem,
+		TopKeys:     entries,
+		Completed:   completed,
+		DurationMs:  time.Since(start).Milliseconds(),
+	}, nil
 }

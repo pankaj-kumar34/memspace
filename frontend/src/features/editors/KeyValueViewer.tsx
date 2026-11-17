@@ -175,13 +175,8 @@ export const KeyValueViewer: React.FC<KeyValueViewerProps> = ({
 
   if (!details) {
     return (
-      <div className="flex h-full min-w-0 flex-1 flex-col bg-white select-none">
-        <div className="flex h-14 shrink-0 items-center justify-between border-b border-zinc-200 bg-white px-4">
-          <span className="text-xs font-semibold text-zinc-400">Key Details</span>
-        </div>
-        <div className="flex flex-1 flex-col items-center justify-center bg-white p-6 text-xs text-zinc-500">
-          <p>Select a key from the explorer to inspect and edit its value.</p>
-        </div>
+      <div className="flex h-full min-w-0 flex-1 flex-col items-center justify-center bg-[#fafafa] p-6 text-xs text-zinc-500 select-none">
+        <p>Select a key from the explorer to inspect and edit its value.</p>
       </div>
     );
   }

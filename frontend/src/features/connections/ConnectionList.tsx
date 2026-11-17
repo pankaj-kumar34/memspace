@@ -13,6 +13,7 @@ import {
   Braces,
   Gauge,
   Radio,
+  Activity,
   Download,
   Sparkles
 } from "lucide-react";
@@ -25,8 +26,8 @@ interface ConnectionListProps {
   connections: ConnectionConfig[];
   activeConnId: string | null;
   activeStatus: ConnectionStatus | null;
-  activeTab?: "terminal" | "explorer" | "diagnostics" | "pubsub";
-  onSelectTab?: (tab: "terminal" | "explorer" | "diagnostics" | "pubsub") => void;
+  activeTab?: "terminal" | "explorer" | "diagnostics" | "pubsub" | "monitor";
+  onSelectTab?: (tab: "terminal" | "explorer" | "diagnostics" | "pubsub" | "monitor") => void;
   onConnect: (id: string) => void;
   onDisconnect: (id: string) => void;
   onEdit: (cfg: ConnectionConfig) => void;
@@ -75,7 +76,7 @@ export const ConnectionList: React.FC<ConnectionListProps> = ({
   const modSymbol = getModSymbol();
 
   const navItems: Array<{
-    id: "terminal" | "explorer" | "diagnostics" | "pubsub";
+    id: "terminal" | "explorer" | "diagnostics" | "pubsub" | "monitor";
     label: string;
     icon: React.ReactNode;
     shortcut: string;
@@ -84,6 +85,7 @@ export const ConnectionList: React.FC<ConnectionListProps> = ({
     { id: "explorer", label: "Explorer", icon: <Braces size={15} />, shortcut: `${modSymbol}2` },
     { id: "diagnostics", label: "Diagnostics", icon: <Gauge size={15} />, shortcut: `${modSymbol}3` },
     { id: "pubsub", label: "Pub / Sub", icon: <Radio size={15} />, shortcut: `${modSymbol}4` },
+    { id: "monitor", label: "Monitor", icon: <Activity size={15} />, shortcut: `${modSymbol}5` },
   ];
 
   const getAccentColor = (conn: ConnectionConfig) => {
@@ -345,16 +347,11 @@ export const ConnectionList: React.FC<ConnectionListProps> = ({
                     <div
                       key={conn.id}
                       ref={(el) => registerExpandedItem(conn.id, el)}
-                      onClick={() => {
-                        if (!isConnConnected && !isConnecting) {
-                          onConnect(conn.id);
-                        }
-                      }}
                       className={`group relative flex items-center justify-between rounded-2xl border py-3 pr-2.5 pl-4 transition-all ${
                         isSelected
                           ? "text-white shadow-md"
                           : "border-zinc-800/80 bg-zinc-800/40 text-zinc-300 hover:border-zinc-700/80 hover:bg-zinc-800/60"
-                      } ${isConnecting ? "cursor-wait opacity-90" : !isConnConnected ? "cursor-pointer" : ""}`}
+                      } ${isConnecting ? "opacity-90" : ""}`}
                       style={{
                         backgroundColor: isSelected ? `${accentColor}18` : undefined,
                         borderColor: isSelected ? `${accentColor}50` : undefined,

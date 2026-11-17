@@ -28,6 +28,7 @@ type ManagedClient struct {
 	Config    models.ConnectionConfig
 	Client    redis.UniversalClient
 	Tunnel    *SSHTunnel
+	dialer    func(ctx context.Context, network, addr string) (net.Conn, error)
 	dbClients map[int]*redis.Client
 	mu        sync.RWMutex
 }
@@ -195,8 +196,42 @@ func NewManagedClientWithDialer(ctx context.Context, cfg models.ConnectionConfig
 		Config:    cfg,
 		Client:    client,
 		Tunnel:    tunnel,
+		dialer:    dialer,
 		dbClients: make(map[int]*redis.Client),
 	}, nil
+}
+
+// DialRaw opens a dedicated, unpooled TCP/TLS connection to the target Redis node
+// for long-lived streaming commands like MONITOR.
+func (mc *ManagedClient) DialRaw(ctx context.Context) (net.Conn, error) {
+	addr := fmt.Sprintf("%s:%d", mc.Config.Host, mc.Config.Port)
+
+	var rawConn net.Conn
+	var err error
+	if mc.dialer != nil {
+		rawConn, err = mc.dialer(ctx, "tcp", addr)
+	} else {
+		rawConn, err = (&net.Dialer{Timeout: 4 * time.Second}).DialContext(ctx, "tcp", addr)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if mc.Config.Tls.Enabled {
+		tlsConfig, err := BuildTLSConfig(mc.Config.Host, mc.Config.Tls)
+		if err != nil {
+			_ = rawConn.Close()
+			return nil, fmt.Errorf("invalid tls configuration: %w", err)
+		}
+		tlsConn := tls.Client(rawConn, tlsConfig)
+		if err := tlsConn.HandshakeContext(ctx); err != nil {
+			_ = tlsConn.Close()
+			return nil, fmt.Errorf("tls handshake failed: %w", err)
+		}
+		return tlsConn, nil
+	}
+
+	return rawConn, nil
 }
 
 // GetClientForDB returns a redis.UniversalClient configured for the requested database.

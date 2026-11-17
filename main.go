@@ -18,6 +18,8 @@ var assets embed.FS
 func init() {
 	application.RegisterEvent[string]("time")
 	application.RegisterEvent[services.PubSubMessage]("pubsub:message")
+	application.RegisterEvent[models.MonitorEvent]("monitor:event")
+	application.RegisterEvent[string]("monitor:stopped")
 	application.RegisterEvent[models.UpdateProgress]("updater:progress")
 	application.RegisterEvent[string]("nav:tab")
 	application.RegisterEvent[string]("nav:toggle-sidebar")
@@ -33,6 +35,7 @@ func main() {
 	cliService := services.NewCliService(connMgr)
 	diagService := services.NewDiagnosticsService(connMgr)
 	pubsubService := services.NewPubSubService(connMgr)
+	monitorService := services.NewMonitorService(connMgr)
 	updaterService := services.NewUpdaterService()
 
 	var app *application.App
@@ -98,6 +101,21 @@ func main() {
 				app.Event.Emit("nav:tab", "pubsub")
 			}
 		},
+		"cmdorctrl+5": func(window application.Window) {
+			if app != nil {
+				app.Event.Emit("nav:tab", "monitor")
+			}
+		},
+		"ctrl+5": func(window application.Window) {
+			if app != nil {
+				app.Event.Emit("nav:tab", "monitor")
+			}
+		},
+		"option+5": func(window application.Window) {
+			if app != nil {
+				app.Event.Emit("nav:tab", "monitor")
+			}
+		},
 		"cmdorctrl+b": func(window application.Window) {
 			if app != nil {
 				app.Event.Emit("nav:toggle-sidebar", "")
@@ -130,6 +148,7 @@ func main() {
 			application.NewService(cliService),
 			application.NewService(diagService),
 			application.NewService(pubsubService),
+			application.NewService(monitorService),
 			application.NewService(updaterService),
 		},
 		Assets: application.AssetOptions{

@@ -6,31 +6,130 @@ import {
   Zap,
   Server,
   RefreshCw,
-  Clock
+  Clock,
+  Database,
+  Search
 } from "lucide-react";
-import type { SlowLogEntry, ClientEntry } from "../../../bindings/memspace/backend/models/index.js";
+import type { SlowLogEntry, ClientEntry, BigKeyScanResult } from "../../../bindings/memspace/backend/models/index.js";
 import { DiagnosticsService } from "../../../bindings/memspace/backend/services/index.js";
 import { formatBytes, getErrorMessage } from "../../lib/utils";
 import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
 import { ConfirmModal } from "../../components/ui/ConfirmModal";
 import { useToast } from "../../components/ui/Toast";
 
+interface SparklineChartProps {
+  title: string;
+  subtitle: string;
+  data: number[];
+  strokeColor: string;
+  fillColor: string;
+  formatValue: (val: number) => string;
+}
+
+const SparklineChart: React.FC<SparklineChartProps> = ({
+  title,
+  subtitle,
+  data,
+  strokeColor,
+  fillColor,
+  formatValue,
+}) => {
+  const width = 400;
+  const height = 84;
+  const padY = 8;
+
+  const latest = data.length > 0 ? data[data.length - 1] : 0;
+  const minVal = data.length > 0 ? Math.min(...data) : 0;
+  const maxVal = data.length > 0 ? Math.max(...data) : 1;
+  const range = maxVal - minVal || 1;
+
+  const points = data.map((val, idx) => {
+    const x = data.length <= 1 ? width : (idx / (data.length - 1)) * width;
+    const y = height - padY - ((val - minVal) / range) * (height - padY * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+
+  const polylinePoints = points.join(" ");
+  const areaPath =
+    points.length > 1
+      ? `M 0,${height} L ${points.map((p) => p).join(" L ")} L ${width},${height} Z`
+      : "";
+
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-zinc-200 bg-white p-4 shadow-xs">
+      <div className="flex items-center justify-between">
+        <div>
+          <h4 className="text-xs font-bold text-zinc-800">{title}</h4>
+          <p className="text-[11px] text-zinc-400">{subtitle}</p>
+        </div>
+        <div className="text-right">
+          <div className="font-mono text-sm font-bold text-zinc-900 tabular-nums">
+            {formatValue(latest)}
+          </div>
+          {data.length > 1 && (
+            <div className="font-mono text-[10px] text-zinc-400 tabular-nums">
+              min {formatValue(minVal)} · max {formatValue(maxVal)}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="h-[84px] w-full overflow-hidden rounded-lg bg-zinc-50/70 px-1 pt-1">
+        {data.length < 2 ? (
+          <div className="flex h-full items-center justify-center text-[11px] text-zinc-400">
+            Collecting live samples...
+          </div>
+        ) : (
+          <svg
+            viewBox={`0 0 ${width} ${height}`}
+            preserveAspectRatio="none"
+            className="size-full"
+          >
+            <path d={areaPath} fill={fillColor} />
+            <polyline
+              fill="none"
+              stroke={strokeColor}
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              points={polylinePoints}
+            />
+          </svg>
+        )}
+      </div>
+    </div>
+  );
+};
+
 interface ServerMetricsDashboardProps {
   connId: string;
+  db?: number;
   isActive?: boolean;
 }
 
 export const ServerMetricsDashboard: React.FC<ServerMetricsDashboardProps> = ({
   connId,
+  db = 0,
   isActive = true,
 }) => {
   const { success: toastSuccess, error: toastError } = useToast();
-  const [activeTab, setActiveTab] = useState<"overview" | "slowlog" | "clients">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "bigkeys" | "slowlog" | "clients">("overview");
   const [info, setInfo] = useState<Record<string, Record<string, string>>>({});
   const [slowLogs, setSlowLogs] = useState<SlowLogEntry[]>([]);
   const [clients, setClients] = useState<ClientEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [killClientTarget, setKillClientTarget] = useState<string | null>(null);
+
+  // Rolling live chart history (last 30 samples)
+  const [opsHistory, setOpsHistory] = useState<number[]>([]);
+  const [memHistory, setMemHistory] = useState<number[]>([]);
+
+  // BigKey Scanner state
+  const [bigKeyPattern, setBigKeyPattern] = useState("*");
+  const [bigKeyMaxKeys, setBigKeyMaxKeys] = useState(2000);
+  const [bigKeyScanning, setBigKeyScanning] = useState(false);
+  const [bigKeyResult, setBigKeyResult] = useState<BigKeyScanResult | null>(null);
 
   const fetchMetrics = useCallback(async () => {
     if (!connId) return;
@@ -38,6 +137,15 @@ export const ServerMetricsDashboard: React.FC<ServerMetricsDashboardProps> = ({
     try {
       const infoData = await DiagnosticsService.GetInfo(connId);
       setInfo(infoData || {});
+
+      const opsVal = parseInt(infoData?.["stats"]?.["instantaneous_ops_per_sec"] || "0", 10);
+      const memVal = parseInt(infoData?.["memory"]?.["used_memory"] || "0", 10);
+      if (!Number.isNaN(opsVal)) {
+        setOpsHistory((prev) => [...prev.slice(-29), opsVal]);
+      }
+      if (!Number.isNaN(memVal) && memVal > 0) {
+        setMemHistory((prev) => [...prev.slice(-29), memVal]);
+      }
 
       if (activeTab === "slowlog") {
         const sl = await DiagnosticsService.GetSlowLog(connId, 50);
@@ -53,6 +161,25 @@ export const ServerMetricsDashboard: React.FC<ServerMetricsDashboardProps> = ({
     }
   }, [connId, activeTab]);
 
+  const handleScanBigKeys = async () => {
+    if (!connId) return;
+    setBigKeyScanning(true);
+    try {
+      const res = await DiagnosticsService.ScanBigKeys(
+        connId,
+        db,
+        bigKeyPattern.trim() || "*",
+        bigKeyMaxKeys,
+        25,
+      );
+      setBigKeyResult(res);
+    } catch (err: unknown) {
+      toastError("BigKey scan failed", getErrorMessage(err));
+    } finally {
+      setBigKeyScanning(false);
+    }
+  };
+
   useEffect(() => {
     if (!isActive) return;
     const initTimer = setTimeout(() => {
@@ -60,7 +187,7 @@ export const ServerMetricsDashboard: React.FC<ServerMetricsDashboardProps> = ({
     }, 0);
     const interval = setInterval(() => {
       void fetchMetrics();
-    }, 5000);
+    }, 3000);
     return () => {
       clearTimeout(initTimer);
       clearInterval(interval);
@@ -94,6 +221,12 @@ export const ServerMetricsDashboard: React.FC<ServerMetricsDashboardProps> = ({
 
   const tabItems = [
     { id: "overview" as const, label: "Overview", icon: LayoutDashboard, count: undefined },
+    {
+      id: "bigkeys" as const,
+      label: "BigKey Scanner",
+      icon: Database,
+      count: bigKeyResult?.topKeys?.length,
+    },
     {
       id: "slowlog" as const,
       label: "Slow Log",
@@ -216,6 +349,26 @@ export const ServerMetricsDashboard: React.FC<ServerMetricsDashboardProps> = ({
             </div>
           </div>
 
+          {/* Live Trend Sparklines */}
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <SparklineChart
+              title="Throughput Trend"
+              subtitle="Rolling 3s samples (ops/sec)"
+              data={opsHistory}
+              strokeColor="#e11d48"
+              fillColor="rgba(225, 29, 72, 0.12)"
+              formatValue={(v) => `${Math.round(v).toLocaleString()}/s`}
+            />
+            <SparklineChart
+              title="Memory Usage Trend"
+              subtitle="Rolling 3s samples (used_memory)"
+              data={memHistory}
+              strokeColor="#0284c7"
+              fillColor="rgba(2, 132, 199, 0.12)"
+              formatValue={(v) => formatBytes(v)}
+            />
+          </div>
+
           {/* Detailed INFO Sections Grid */}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {["server", "memory", "stats", "replication"].map((sec) => {
@@ -240,6 +393,142 @@ export const ServerMetricsDashboard: React.FC<ServerMetricsDashboardProps> = ({
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {activeTab === "bigkeys" && (
+        <div className="flex flex-col gap-4 rounded-xl border border-zinc-200 bg-white p-4 shadow-xs">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-xs font-bold tracking-wider text-zinc-900 uppercase">
+                Non-Blocking BigKey &amp; Memory Profiler
+              </h3>
+              <p className="text-[11px] text-zinc-500">
+                Samples keys in DB {db} using cursor <code className="font-mono">SCAN</code> and pipelined <code className="font-mono">MEMORY USAGE</code>.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative w-44">
+                <Search
+                  size={13}
+                  className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-zinc-400"
+                />
+                <Input
+                  value={bigKeyPattern}
+                  onChange={(e) => setBigKeyPattern(e.target.value)}
+                  placeholder="Pattern (*)"
+                  className="h-8 bg-white pl-8 font-mono text-xs"
+                />
+              </div>
+
+              <select
+                value={bigKeyMaxKeys}
+                onChange={(e) => setBigKeyMaxKeys(Number(e.target.value))}
+                className="h-8 rounded-lg border border-zinc-200 bg-white px-2.5 text-xs font-medium text-zinc-700"
+              >
+                <option value={1000}>Sample 1,000 keys</option>
+                <option value={2000}>Sample 2,000 keys</option>
+                <option value={5000}>Sample 5,000 keys</option>
+              </select>
+
+              <Button
+                size="sm"
+                onClick={handleScanBigKeys}
+                disabled={bigKeyScanning}
+                className="h-8 cursor-pointer gap-1.5 rounded-lg bg-rose-600 px-3 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
+              >
+                <RefreshCw size={12} className={bigKeyScanning ? "animate-spin" : ""} />
+                <span>{bigKeyScanning ? "Scanning..." : "Scan Keyspace"}</span>
+              </Button>
+            </div>
+          </div>
+
+          {bigKeyResult && (
+            <div className="grid grid-cols-3 gap-3 rounded-lg border border-zinc-200 bg-zinc-50/70 px-4 py-2.5 text-xs">
+              <div>
+                <span className="text-zinc-500">Keys Scanned:</span>{" "}
+                <span className="font-mono font-bold text-zinc-900">
+                  {bigKeyResult.scannedKeys.toLocaleString()}
+                </span>
+                <span className="ml-1 text-[10px] text-zinc-400">
+                  ({bigKeyResult.completed ? "full" : "sampled"})
+                </span>
+              </div>
+              <div>
+                <span className="text-zinc-500">Sampled Memory:</span>{" "}
+                <span className="font-mono font-bold text-zinc-900">
+                  {formatBytes(bigKeyResult.totalMemory)}
+                </span>
+              </div>
+              <div className="text-right">
+                <span className="text-zinc-500">Duration:</span>{" "}
+                <span className="font-mono font-bold text-zinc-900">
+                  {bigKeyResult.durationMs} ms
+                </span>
+              </div>
+            </div>
+          )}
+
+          <div className="overflow-x-auto rounded-lg border border-zinc-200">
+            <table className="w-full border-collapse text-xs">
+              <thead className="border-b border-zinc-200 bg-zinc-50 text-left text-zinc-600 select-none">
+                <tr>
+                  <th className="px-3 py-2 font-semibold">Key</th>
+                  <th className="w-24 px-3 py-2 font-semibold">Type</th>
+                  <th className="w-40 px-3 py-2 text-right font-semibold">Memory Usage</th>
+                  <th className="w-32 px-3 py-2 text-right font-semibold">Elements / Len</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100 select-text">
+                {!bigKeyResult ? (
+                  <tr>
+                    <td colSpan={4} className="py-10 text-center text-zinc-500">
+                      Click <strong>Scan Keyspace</strong> to profile the largest keys in this database.
+                    </td>
+                  </tr>
+                ) : bigKeyResult.topKeys.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="py-10 text-center text-zinc-500">
+                      No keys matched pattern <code className="font-mono">{bigKeyPattern || "*"}</code>.
+                    </td>
+                  </tr>
+                ) : (
+                  bigKeyResult.topKeys.map((entry) => {
+                    const maxMem = bigKeyResult.topKeys[0]?.memoryBytes || 1;
+                    const pct = entry.memoryBytes > 0 ? Math.max(4, Math.round((entry.memoryBytes / maxMem) * 100)) : 0;
+                    return (
+                      <tr key={entry.key} className="font-mono transition-colors hover:bg-zinc-50/80">
+                        <td className="max-w-xs truncate px-3 py-2 text-zinc-900" title={entry.key}>
+                          {entry.key}
+                        </td>
+                        <td className="px-3 py-2">
+                          <span className="rounded border border-zinc-200 bg-zinc-100 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-700 uppercase">
+                            {entry.type}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <div className="flex flex-col items-end gap-1">
+                            <span className="font-bold text-rose-600">
+                              {entry.memoryBytes > 0 ? formatBytes(entry.memoryBytes) : "N/A"}
+                            </span>
+                            {pct > 0 && (
+                              <div className="h-1 w-24 overflow-hidden rounded-full bg-zinc-100">
+                                <div className="h-full bg-rose-500" style={{ width: `${pct}%` }} />
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-right text-zinc-600">
+                          {entry.length.toLocaleString()}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

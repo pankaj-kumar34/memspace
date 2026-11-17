@@ -6,6 +6,7 @@ import {
   Terminal as TermIcon,
   Gauge,
   Radio,
+  Activity,
   Plus,
   AlertTriangle,
   Clock,
@@ -40,6 +41,7 @@ import { KeyValueViewer } from "./features/editors/KeyValueViewer";
 import { Terminal } from "./features/terminal/Terminal";
 import { ServerMetricsDashboard } from "./features/diagnostics/ServerMetricsDashboard";
 import { PubSubDebugger } from "./features/pubsub/PubSubDebugger";
+import { MonitorViewer } from "./features/monitor/MonitorViewer";
 import { Button } from "./components/ui/button";
 import { Badge } from "./components/ui/badge";
 import { ConfirmModal } from "./components/ui/ConfirmModal";
@@ -69,7 +71,7 @@ export function App() {
   );
   const [connectingId, setConnectingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<
-    "terminal" | "explorer" | "diagnostics" | "pubsub"
+    "terminal" | "explorer" | "diagnostics" | "pubsub" | "monitor"
   >("terminal");
   const [currentDb, setCurrentDb] = useState(0);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -113,7 +115,7 @@ export function App() {
   const activeConnIdRef = useRef(activeConnId);
   const activeStatusRef = useRef(activeStatus);
   const handleNavTabRef = useRef<
-    (tab: "terminal" | "explorer" | "diagnostics" | "pubsub") => void
+    (tab: "terminal" | "explorer" | "diagnostics" | "pubsub" | "monitor") => void
   >(() => {});
   const handleOpenAddRef = useRef<() => void>(() => {});
 
@@ -307,7 +309,7 @@ export function App() {
   };
 
   const handleNavTab = (
-    tab: "terminal" | "explorer" | "diagnostics" | "pubsub",
+    tab: "terminal" | "explorer" | "diagnostics" | "pubsub" | "monitor",
   ) => {
     const isConn = !!(
       activeConnIdRef.current && activeStatusRef.current?.connected
@@ -341,6 +343,7 @@ export function App() {
       explorer: `Explorer (${modSymbol}2)`,
       diagnostics: `Diagnostics (${modSymbol}3)`,
       pubsub: `Pub / Sub (${modSymbol}4)`,
+      monitor: `Monitor (${modSymbol}5)`,
     };
     toastError(
       "Connection Required",
@@ -387,7 +390,8 @@ export function App() {
         tab === "terminal" ||
         tab === "explorer" ||
         tab === "diagnostics" ||
-        tab === "pubsub"
+        tab === "pubsub" ||
+        tab === "monitor"
       ) {
         handleNavTabRef.current(tab);
       }
@@ -424,7 +428,8 @@ export function App() {
         tab === "terminal" ||
         tab === "explorer" ||
         tab === "diagnostics" ||
-        tab === "pubsub"
+        tab === "pubsub" ||
+        tab === "monitor"
       ) {
         handleNavTabRef.current(tab);
       }
@@ -485,6 +490,7 @@ export function App() {
       const is2 = e.key === "2" || e.code === "Digit2" || e.code === "Numpad2";
       const is3 = e.key === "3" || e.code === "Digit3" || e.code === "Numpad3";
       const is4 = e.key === "4" || e.code === "Digit4" || e.code === "Numpad4";
+      const is5 = e.key === "5" || e.code === "Digit5" || e.code === "Numpad5";
       const isB = e.key === "b" || e.key === "B" || e.code === "KeyB";
       const isN = e.key === "n" || e.key === "N" || e.code === "KeyN";
 
@@ -512,6 +518,10 @@ export function App() {
         e.preventDefault();
         e.stopPropagation();
         handleNavTabRef.current("pubsub");
+      } else if (is5) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleNavTabRef.current("monitor");
       }
     };
 
@@ -896,11 +906,15 @@ export function App() {
                 {activeTab === "pubsub" && (
                   <Radio size={15} className="text-rose-600" />
                 )}
+                {activeTab === "monitor" && (
+                  <Activity size={15} className="text-rose-600" />
+                )}
                 <span className="text-sm font-bold text-zinc-900">
                   {activeTab === "terminal" && "Console"}
                   {activeTab === "explorer" && "Explorer"}
                   {activeTab === "diagnostics" && "Diagnostics"}
                   {activeTab === "pubsub" && "Pub / Sub"}
+                  {activeTab === "monitor" && "Monitor"}
                 </span>
               </div>
 
@@ -985,25 +999,18 @@ export function App() {
                     }}
                   />
                 ) : (
-                  <div className="flex h-full flex-1 flex-col bg-white select-none">
-                    <div className="flex h-14 shrink-0 items-center justify-between border-b border-zinc-200 bg-white px-5">
-                      <span className="text-xs font-semibold text-zinc-400">
-                        Key Details
-                      </span>
+                  <div className="flex h-full flex-1 flex-col items-center justify-center gap-2.5 bg-[#fafafa] p-6 text-zinc-400 select-none">
+                    <div className="mb-1 flex size-12 items-center justify-center rounded-2xl border border-zinc-200 bg-white text-zinc-400 shadow-2xs">
+                      <Key size={22} className="text-zinc-500 opacity-70" />
                     </div>
-                    <div className="flex flex-1 flex-col items-center justify-center gap-2.5 bg-white p-6 text-zinc-400">
-                      <div className="mb-1 flex size-12 items-center justify-center rounded-2xl border border-zinc-200 bg-white text-zinc-400 shadow-2xs">
-                        <Key size={22} className="text-zinc-500 opacity-70" />
-                      </div>
-                      <p className="text-xs font-semibold text-zinc-700">
-                        Select a key from the explorer on the left to inspect
-                        and edit its value.
-                      </p>
-                      <p className="max-w-sm text-center text-[11px] leading-relaxed text-zinc-400">
-                        Supports Strings, Hashes, Lists, Sets, Sorted Sets,
-                        Streams, and JSON documents.
-                      </p>
-                    </div>
+                    <p className="text-xs font-semibold text-zinc-700">
+                      Select a key from the explorer on the left to inspect
+                      and edit its value.
+                    </p>
+                    <p className="max-w-sm text-center text-[11px] leading-relaxed text-zinc-400">
+                      Supports Strings, Hashes, Lists, Sets, Sorted Sets,
+                      Streams, and JSON documents.
+                    </p>
                   </div>
                 )}
               </div>
@@ -1016,6 +1023,7 @@ export function App() {
               >
                 <ServerMetricsDashboard
                   connId={activeConnection.id}
+                  db={currentDb}
                   isActive={activeTab === "diagnostics"}
                 />
               </div>
@@ -1029,6 +1037,18 @@ export function App() {
                 <PubSubDebugger
                   connId={activeConnection.id}
                   onSubscribedChannelsChange={setActivePubSubChannels}
+                />
+              </div>
+
+              {/* 5. Real-Time Command Monitor */}
+              <div
+                className={`size-full ${
+                  activeTab === "monitor" ? "block" : "hidden"
+                }`}
+              >
+                <MonitorViewer
+                  connId={activeConnection.id}
+                  clusterMode={activeConnection.type === "cluster"}
                 />
               </div>
             </div>
@@ -1225,13 +1245,8 @@ export function App() {
                             return (
                               <div
                                 key={conn.id}
-                                onClick={() => {
-                                  if (!isConnecting) {
-                                    requestConnect(conn.id, conn);
-                                  }
-                                }}
-                                className={`group relative flex cursor-pointer flex-col justify-between gap-4 overflow-hidden rounded-xl border border-zinc-200 bg-white p-4 shadow-2xs transition-all duration-200 hover:border-(--card-accent) sm:p-4.5 ${
-                                  isConnecting ? "cursor-wait opacity-90" : ""
+                                className={`group relative flex flex-col justify-between gap-4 overflow-hidden rounded-xl border border-zinc-200 bg-white p-4 shadow-2xs transition-all duration-200 hover:border-(--card-accent) sm:p-4.5 ${
+                                  isConnecting ? "opacity-90" : ""
                                 }`}
                                 style={
                                   {
@@ -1324,26 +1339,23 @@ export function App() {
                                   </div>
 
                                   <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
+                                    onClick={() => {
                                       if (!isConnecting) {
                                         requestConnect(conn.id, conn);
                                       }
                                     }}
                                     disabled={isConnecting}
-                                    className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-semibold transition-all hover:opacity-90 active:scale-95"
-                                    style={{
-                                      backgroundColor: `${accentColor}15`,
-                                      color: accentColor,
-                                      borderColor: `${accentColor}35`,
-                                    }}
-                                    title={`Power On • Connect to ${conn.name}`}
+                                    className={`flex size-7.5 shrink-0 cursor-pointer items-center justify-center rounded-xl bg-transparent transition-all hover:bg-zinc-100 active:scale-93 ${
+                                      isConnecting
+                                        ? "cursor-wait text-rose-400"
+                                        : "text-rose-500 hover:text-emerald-600"
+                                    }`}
+                                    title={isConnecting ? "Connecting..." : `Power On • Connect to ${conn.name}`}
                                   >
                                     <Power
-                                      size={11.5}
-                                      className={`transition-transform ${isConnecting ? "animate-pulse" : "group-hover:scale-110"}`}
+                                      size={14}
+                                      className={isConnecting ? "animate-pulse" : ""}
                                     />
-                                    <span>{isConnecting ? "Connecting..." : "Connect"}</span>
                                   </button>
                                 </div>
                               </div>

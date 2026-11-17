@@ -117,7 +117,7 @@ export const CodeEditorWithGutter: React.FC<CodeEditorWithGutterProps> = ({
         } else if (match[6]) {
           tokens.push({ type: "punct", val: match[6] });
         }
-        lastIndex = JSON_TOKEN_REGEX.lastIndex;
+        lastIndex = tokenRegex.lastIndex;
       }
 
       if (lastIndex < line.length) {
