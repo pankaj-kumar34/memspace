@@ -289,14 +289,14 @@ export const KeyValueViewer: React.FC<KeyValueViewerProps> = ({
                     return (
                       <div className="flex min-w-0 flex-nowrap items-center gap-1 truncate">
                         <span
-                          className="max-w-[130px] shrink-0 truncate font-normal text-zinc-400 transition-colors hover:text-zinc-700"
+                          className="max-w-32.5 shrink-0 truncate font-normal text-zinc-400 transition-colors hover:text-zinc-700"
                           title={parts[0]}
                         >
                           {parts[0]}
                         </span>
                         <span className="shrink-0 font-sans text-xs text-zinc-300">›</span>
                         <span
-                          className="max-w-[130px] shrink-0 truncate font-normal text-zinc-400 transition-colors hover:text-zinc-700"
+                          className="max-w-32.5 shrink-0 truncate font-normal text-zinc-400 transition-colors hover:text-zinc-700"
                           title={parts[1]}
                         >
                           {parts[1]}

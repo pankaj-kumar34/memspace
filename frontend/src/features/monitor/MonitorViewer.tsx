@@ -248,7 +248,7 @@ export const MonitorViewer: React.FC<MonitorViewerProps> = ({
 
       {/* Filter & Export Toolbar */}
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2.5">
-        <div className="relative min-w-[240px] flex-1">
+        <div className="relative min-w-60 flex-1">
           <Search
             size={14}
             className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-zinc-400"

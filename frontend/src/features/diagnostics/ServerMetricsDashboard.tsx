@@ -75,7 +75,7 @@ const SparklineChart: React.FC<SparklineChartProps> = ({
         </div>
       </div>
 
-      <div className="h-[84px] w-full overflow-hidden rounded-lg bg-zinc-50/70 px-1 pt-1">
+      <div className="h-21 w-full overflow-hidden rounded-lg bg-zinc-50/70 px-1 pt-1">
         {data.length < 2 ? (
           <div className="flex h-full items-center justify-center text-[11px] text-zinc-400">
             Collecting live samples...
