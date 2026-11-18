@@ -547,7 +547,10 @@ export function App() {
 
   const handleDeleteConnection = (id: string, name?: string) => {
     const targetName =
-      name || connections.find((c) => c.id === id)?.name || "this connection";
+      name ||
+      connections.find((c) => c.id === id)?.name ||
+      (ephemeralConn?.id === id ? ephemeralConn.name : undefined) ||
+      "this connection";
     setDeleteTarget({ id, name: targetName });
   };
 
@@ -559,6 +562,10 @@ export function App() {
     try {
       await ConnectionService.DeleteConnection(id);
       removeConnectionFromOrder(id);
+
+      if (ephemeralConn?.id === id) {
+        setEphemeralConn(null);
+      }
 
       // If active, cleanly disconnect and reset
       if (activeConnId === id) {
@@ -770,11 +777,19 @@ export function App() {
 
   const recentConnections = connections.slice(0, 3);
 
+  const sidebarConnections = React.useMemo(() => {
+    if (!ephemeralConn) return connections;
+    return [
+      ephemeralConn,
+      ...connections.filter((c) => c.id !== ephemeralConn.id),
+    ];
+  }, [connections, ephemeralConn]);
+
   return (
     <div className="flex size-full overflow-hidden bg-[#fafafa] font-sans text-zinc-900 select-none">
       {/* 1. Left Sidebar: Connection Management (Collapsible) */}
       <ConnectionList
-        connections={connections}
+        connections={sidebarConnections}
         activeConnId={activeConnId}
         activeStatus={activeStatus}
         activeTab={activeTab}
@@ -806,6 +821,9 @@ export function App() {
             }}
             onDelete={handleDeleteConnection}
             onSaved={async (savedCfg, andConnect) => {
+              if (ephemeralConn?.id === savedCfg.id && !savedCfg.ephemeral) {
+                setEphemeralConn(null);
+              }
               await loadConnections();
               setIsEditingProfile(false);
               setEditingConfig(null);
